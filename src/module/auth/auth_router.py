@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from src.Shared.Infrastructure.db_context.config import get_db
 from src.module.dtos import (
     TenantRegistrationRequest,
     TenantRegistrationResponse,
+    TenantLoginRequest,
+    TenantLoginResponse,
+    TenantLogoutResponse,
 )
 from src.module.service import AuthService, get_AuthService
 
@@ -13,6 +14,7 @@ from src.Shared.exceptions import (
     PasswordHashingError,
     TokenGenerationError,
     InternalServerError,
+    InvalidCredentialsError,
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -27,7 +29,6 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 )
 async def signup(
     registration_data: TenantRegistrationRequest,
-    session: AsyncSession = Depends(get_db),
     security_service: AuthService = Depends(get_AuthService),
 ):
     """
@@ -69,8 +70,6 @@ async def signup(
             tenant_id=tenant.id,
             email=tenant.email,
             access_token=access_token,
-            token_type="bearer",
-            created_at=tenant.created_at,
         )
 
     except EmailAlreadyExistsError:
@@ -87,5 +86,91 @@ async def signup(
         raise InternalServerError(
             message="An unexpected error occurred during registration",
             context="signup",
+            details={"error": str(e)},
+        )
+
+
+@router.post(
+    "/login",
+    response_model=TenantLoginResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Authenticate a tenant",
+    description="Authenticates a tenant with email and password. Returns an access token upon successful authentication.",
+)
+async def login(
+    login_data: TenantLoginRequest,
+    security_service: AuthService = Depends(get_AuthService),
+):
+    """
+    Tenant login endpoint.
+
+    This endpoint handles tenant authentication.
+
+    Returns:
+        TenantLoginResponse: Authenticated tenant details with access token
+
+    Raises:
+        InvalidCredentialsError: When email doesn't exist or password doesn't match
+        TokenGenerationError: When token generation fails
+        InternalServerError: For unexpected errors during login
+    """
+    try:
+        tenant = await security_service.login_tenant(
+            email=login_data.email,
+            password=login_data.password,
+        )
+
+        access_token = security_service.generate_access_token(
+            tenant_id=tenant.id, email=tenant.email
+        )
+
+        return TenantLoginResponse(
+            access_token=access_token,
+            tenant_id=tenant.id,
+            email=tenant.email,
+        )
+
+    except InvalidCredentialsError:
+        raise
+    except TokenGenerationError:
+        raise
+    except Exception as e:
+        raise InternalServerError(
+            message="An unexpected error occurred during login",
+            context="login",
+            details={"error": str(e)},
+        )
+
+
+@router.post(
+    "/logout",
+    response_model=TenantLogoutResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Logout a tenant",
+    description="Logs out the current tenant. Since JWT tokens are stateless, the client should discard the token.",
+)
+async def logout(security_service: AuthService = Depends(get_AuthService)):
+    """
+    Tenant logout endpoint.
+
+    This endpoint provides server-side confirmation and will be extended
+    with token blacklisting in the future.
+
+    Args:
+        security_service: Security service for logout operations
+
+    Returns:
+        TenantLogoutResponse: Confirmation of successful logout
+
+    Raises:
+        InternalServerError: For unexpected errors during logout
+    """
+    try:
+        security_service.logout_tenant()
+        return TenantLogoutResponse()
+    except Exception as e:
+        raise InternalServerError(
+            message="An unexpected error occurred during logout",
+            context="logout",
             details={"error": str(e)},
         )

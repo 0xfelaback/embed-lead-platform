@@ -58,6 +58,18 @@ class TokenGenerationError(APIBusinessException):
         )
 
 
+class InvalidCredentialsError(APIBusinessException):
+    """Raised when login credentials are invalid."""
+
+    def __init__(self, context: str = "login"):
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code="AUTH_INVALID_CREDENTIALS",
+            message="Invalid email or password",
+            context=context,
+        )
+
+
 class BadRequestError(APIBusinessException):
     """Raised for general bad request errors."""
 

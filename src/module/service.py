@@ -16,6 +16,7 @@ from src.Shared.exceptions import (
     EmailAlreadyExistsError,
     PasswordHashingError,
     TokenGenerationError,
+    InvalidCredentialsError,
 )
 
 
@@ -125,6 +126,41 @@ class AuthService:
 
         logger.info(f"New tenant registered successfully: {email}")
         return new_tenant
+
+    async def login_tenant(self, email: str, password: str) -> Tenant:
+        """
+        Authenticate a tenant with email and password.
+
+        Args:
+            email: Email address for the tenant
+            password: Plain text password to verify
+
+        Returns:
+            Authenticated Tenant entity
+
+        Raises:
+            InvalidCredentialsError: If email doesn't exist or password doesn't match
+        """
+        tenant = await self.tenant_repository.get_by_email(email)
+
+        if not tenant:
+            logger.warning(f"Login failed: Tenant not found - {email}")
+            raise InvalidCredentialsError(context="login")
+
+        if not self.verify_password(password, tenant.key_hash):
+            logger.warning(f"Login failed: Invalid password - {email}")
+            raise InvalidCredentialsError(context="login")
+
+        logger.info(f"Tenant logged in successfully: {email}")
+        return tenant
+
+    def logout_tenant(self) -> None:
+        """
+        Logout a tenant.
+
+        Note: For server-side logout, implement the yet to be implemented token blacklisting.
+        """
+        logger.info("Tenant logout requested")
 
 
 def get_AuthService(

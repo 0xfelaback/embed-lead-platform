@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from datetime import datetime
 import uuid
 import re
+
 
 class TenantRegistrationRequest(BaseModel):
     """
@@ -28,7 +28,7 @@ class TenantRegistrationRequest(BaseModel):
     @classmethod
     def validate_email_format(cls, v: str) -> str:
         """Ensure email meets format requirements."""
-        email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
         if not re.match(email_regex, v):
             raise ValueError("Invalid email format")
         return v
@@ -52,8 +52,7 @@ class TenantRegistrationResponse(BaseModel):
     """
     Creative DTO for successful tenant registration response.
 
-    Returns essential account information along with authentication credentials
-    and metadata about the newly created tenant.
+    Returns essential account information along with authentication credentials.
     """
 
     tenant_id: uuid.UUID = Field(
@@ -61,12 +60,51 @@ class TenantRegistrationResponse(BaseModel):
     )
     email: EmailStr = Field(..., description="Email address of the registered tenant")
     access_token: str = Field(..., description="JWT access token for authentication")
-    token_type: str = Field(
-        default="bearer", description="Type of the token (always bearer)"
+
+    class Config:
+        from_attributes = True
+
+
+class TenantLoginRequest(BaseModel):
+    """
+    DTO for tenant login request.
+
+    This request captures the credentials needed to authenticate an existing tenant.
+    """
+
+    email: EmailStr = Field(
+        ...,
+        description="Email address for the tenant account",
+        examples=["tenant@example.com"],
     )
-    created_at: datetime = Field(
-        ..., description="Timestamp when the tenant account was created"
+    password: str = Field(
+        ...,
+        min_length=8,
+        max_length=128,
+        description="Password for the tenant account",
+        examples=["SecureP@ssw0rd!2024"],
+    )
+
+
+class TenantLoginResponse(BaseModel):
+    """
+    DTO for successful tenant login response.
+
+    Returns authentication credentials and essential tenant information.
+    """
+
+    access_token: str = Field(..., description="JWT access token for authentication")
+    tenant_id: uuid.UUID = Field(..., description="Unique identifier for the tenant")
+    email: EmailStr = Field(
+        ..., description="Email address of the authenticated tenant"
     )
 
     class Config:
         from_attributes = True
+
+
+class TenantLogoutResponse(BaseModel):
+
+    message: str = Field(
+        default="Successfully logged out", description="Logout confirmation message"
+    )

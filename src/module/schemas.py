@@ -110,7 +110,7 @@ class Widget(Base):
 
     tenant: Mapped["Tenant"] = relationship("Tenant", back_populates="widgets")
     submissions: Mapped[list["Submission"]] = relationship(
-        back_populates="tenant", cascade="all, delete-orphan"
+        back_populates="widget", cascade="all, delete-orphan"
     )
 
 

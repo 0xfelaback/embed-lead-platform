@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from datetime import datetime
 from src.Shared.repository.SharedRepository import SharedRepository
 from src.Shared.Infrastructure.db_context.context import get_engine
-from src.module.routes import router as auth_router
+from src.module.auth.auth_router import router as auth_router
 from src.Shared.exceptions import APIBusinessException
 
 current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
