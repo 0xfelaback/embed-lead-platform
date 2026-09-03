@@ -8,6 +8,7 @@ from src.Shared.Infrastructure.db_context.schema import base
 # run migrations: alembic upgrade head (from repo /app root)
 
 from alembic import context
+from src.module.schemas import Tenant, Widget, Submission
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

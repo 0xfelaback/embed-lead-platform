@@ -6,11 +6,13 @@ from sys import stderr
 from loguru import logger
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from datetime import datetime
-
 from src.Shared.repository.SharedRepository import SharedRepository
 from src.Shared.Infrastructure.db_context.context import get_engine
+from src.module.routes import router as auth_router
+from src.Shared.exceptions import APIBusinessException
 
 current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 log_filename = f"logs/{current_time}-log-embed-lead-platform.log"
@@ -57,7 +59,25 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
+app.include_router(auth_router)
+
+
 @app.get("/health")
 def health_check():
     logger.info("Health check endpoint called")
     return {"status": "ok"}
+
+
+@app.exception_handler(APIBusinessException)
+async def api_business_exception_handler(request: Request, exc: APIBusinessException):
+    """Handle custom API business exceptions with proper logging and response format."""
+    logger.warning(f"Operation [{exc.context}] failed: {exc.message}")
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error_code": exc.error_code,
+            "message": exc.message,
+            "details": exc.details,
+        },
+    )
