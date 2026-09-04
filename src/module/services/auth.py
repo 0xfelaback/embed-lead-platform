@@ -4,14 +4,13 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from pwdlib import PasswordHash
 from pwdlib.hashers.argon2 import Argon2Hasher
+from src.Shared.Infrastructure.db_context.config import get_db
 from src.Shared.Infrastructure.db_context.context import settings
 from jwt import PyJWT
-from src.Shared.Infrastructure.db_context.config import get_db
 from src.main import logger
-from src.module.schemas import Tenant, Widget, WidgetType
-from src.module.repositories.TenantRepository import TenantRepository
-from src.module.repositories.WidgetRepository import WidgetRepository
-from typing import Any, List, Optional
+from src.module.schemas.tenant import Tenant
+from src.module.repositories.tenant import TenantRepository
+from typing import Any
 from jwt.exceptions import PyJWTError
 from src.Shared.exceptions import (
     EmailAlreadyExistsError,
@@ -20,7 +19,6 @@ from src.Shared.exceptions import (
     InvalidCredentialsError,
 )
 from jwt import decode  # type: ignore
-
 from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -195,68 +193,6 @@ class AuthService:
         Note: For server-side logout, implement the yet to be implemented token blacklisting.
         """
         logger.info("Tenant logout requested")
-
-
-class WidgetService:
-    """
-    Service handling widget-related business logic.
-
-    This service encapsulates widget creation, validation, and embed snippet generation
-    with proper error handling and business rules.
-    """
-
-    def __init__(self, session: AsyncSession):
-        self.session = session
-        self.widget_repository = WidgetRepository(session)
-
-    def generate_embed_snippet(self, widget_id: UUID) -> str:
-        api_base_url = settings.BASE_URL
-        return f'<script src="{api_base_url}/widget.js?id={widget_id}"></script>'
-
-    async def create_widget(
-        self,
-        tenant_id: UUID,
-        widget_type: WidgetType,
-        title: str,
-        settings: dict[str, Any],
-    ) -> Widget:
-        widget = await self.widget_repository.create(
-            tenant_id=tenant_id,
-            widget_type=widget_type,
-            title=title,
-            settings=settings,
-        )
-
-        if not widget:
-            logger.error(f"Widget creation failed for tenant: {tenant_id}")
-            raise ValueError("Failed to create widget")
-
-        logger.info(f"Widget created successfully: {widget.id}")
-        return widget
-
-    async def get_widget_by_id(self, widget_id: UUID) -> Optional[Widget]:
-        return await self.widget_repository.get_by_id(widget_id)
-
-    async def get_widgets_by_tenant(self, tenant_id: UUID) -> tuple[List[Widget], int]:
-        return await self.widget_repository.get_by_tenant_id(tenant_id)
-
-    async def get_widgets_paginated(
-        self,
-        tenant_id: UUID,
-        page: int = 1,
-        limit: int = 20,
-        status_filter: Optional[str] = None,
-    ) -> tuple[list[Widget], int]:
-        limit = min(limit, 20)
-        return await self.widget_repository.get_by_tenant_id(
-            tenant_id, page, limit, status_filter
-        )
-
-
-def get_WidgetService(
-    session: AsyncSession = Depends(get_db),
-) -> WidgetService:
-    return WidgetService(session=session)
 
 
 def get_AuthService(

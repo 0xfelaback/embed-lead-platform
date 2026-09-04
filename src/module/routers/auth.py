@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, status
-from src.module.dtos import (
+from src.module.dtos.auth import (
     TenantRegistrationRequest,
     TenantRegistrationResponse,
     TenantLoginRequest,
     TenantLoginResponse,
     TenantLogoutResponse,
 )
-from src.module.service import AuthService, get_AuthService
+from src.module.services.auth import AuthService, get_AuthService
 
 # from src.main import logger
 from src.Shared.exceptions import (

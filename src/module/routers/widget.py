@@ -1,25 +1,25 @@
 from fastapi import APIRouter, Depends, status, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import uuid
-from src.module.dtos import (
+from src.module.dtos.widget import (
     SingleWidgetListItemResponse,
     WidgetCreateRequest,
     WidgetCreateResponse,
     WidgetListResponse,
     WidgetUpdateRequest,
 )
-from src.module.service import (
+from src.module.services.auth import (
     AuthService,
     get_AuthService,
 )
-from src.module.schemas import Tenant
-from src.module.orchestrator import WidgetOrchestrator, get_WidgetOrchestrator
+from src.module.schemas.tenant import Tenant
+from src.module.orchestrators.widget import WidgetOrchestrator, get_WidgetOrchestrator
 from src.Shared.exceptions import (
-    ValidationError,
     InternalServerError,
-    UnauthorizedError,
     NotFoundError,
     ResourceAccessDeniedError,
+    ConflictError,
+    DatabaseError,
 )
 from src.main import logger
 
@@ -55,23 +55,10 @@ async def create_widget(
             title=widget_data.title,
             settings=widget_data.settings.model_dump(),
         )
-        response_data["tenant_id"] = tenant.id
+        return response_data
 
-        return WidgetCreateResponse(**response_data)
-
-    except UnauthorizedError as e:
-        logger.warning(f"Widget creation unauthorized: {str(e)}")
-        raise UnauthorizedError(
-            message="Invalid or missing authentication token",
-            context="widget_creation",
-        )
-    except ValueError as e:
-        logger.error(f"Widget creation validation error: {str(e)}")
-        raise ValidationError(
-            message=str(e),
-            context="widget_creation",
-            details={"error_type": "validation_error"},
-        )
+    except (ConflictError, DatabaseError, InternalServerError) as e:
+        raise
     except Exception as e:
         logger.error(f"Widget creation failed: {str(e)}")
         raise InternalServerError(
@@ -105,21 +92,10 @@ async def list_widgets(
             limit=limit,
             status_filter=status_filter,
         )
-        return WidgetListResponse(**response_data)
+        return response_data
 
-    except UnauthorizedError as e:
-        logger.warning(f"Widget list unauthorized: {str(e)}")
-        raise UnauthorizedError(
-            message="Invalid or missing authentication token",
-            context="widget_list",
-        )
-    except ValueError as e:
-        logger.error(f"Widget list validation error: {str(e)}")
-        raise ValidationError(
-            message=str(e),
-            context="widget_list",
-            details={"error_type": "validation_error"},
-        )
+    except (DatabaseError, InternalServerError) as e:
+        raise
     except Exception as e:
         logger.error(f"Widget list failed: {str(e)}")
         raise InternalServerError(
@@ -141,47 +117,18 @@ async def get_widget_details(
     widget_orchestrator: WidgetOrchestrator = Depends(get_WidgetOrchestrator),
 ):
     try:
-        belongs_to_tenant = await widget_orchestrator.widget_service.widget_repository.belongs_to_tenant(
-            widget_id=widget_id,
-            tenant_id=tenant.id,
+        response_data: SingleWidgetListItemResponse = (
+            await widget_orchestrator.get_widget_workflow(widget_id, tenant.id)
         )
+        return response_data
 
-        if not belongs_to_tenant:
-            logger.warning(
-                f"Unauthorized widget access attempt: widget_id={widget_id}, tenant_id={tenant.id}"
-            )
-            raise ResourceAccessDeniedError(
-                message="You do not have permission to access this widget",
-                context="widget_retrieval",
-                details={"widget_id": str(widget_id)},
-            )
-
-        response_data = await widget_orchestrator.get_widget_workflow(widget_id)
-        return SingleWidgetListItemResponse(**response_data)
-
-    except ResourceAccessDeniedError as e:
-        logger.warning(f"Widget access denied: {str(e)}")
+    except (
+        ResourceAccessDeniedError,
+        NotFoundError,
+        DatabaseError,
+        InternalServerError,
+    ) as e:
         raise
-    except NotFoundError as e:
-        logger.warning(f"Widget not found: {str(e)}")
-        raise NotFoundError(
-            message="Widget not found",
-            context="widget_retrieval",
-            details={"widget_id": str(widget_id)},
-        )
-    except UnauthorizedError as e:
-        logger.warning(f"Widget retrieval unauthorized: {str(e)}")
-        raise UnauthorizedError(
-            message="Invalid or missing authentication token",
-            context="widget_retrieval",
-        )
-    except ValueError as e:
-        logger.error(f"Widget retrieval validation error: {str(e)}")
-        raise ValidationError(
-            message=str(e),
-            context="widget_retrieval",
-            details={"error_type": "validation_error"},
-        )
     except Exception as e:
         logger.error(f"Widget retrieval failed: {str(e)}")
         raise InternalServerError(
@@ -195,7 +142,7 @@ async def get_widget_details(
     "/api/v1/widgets/{widget_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a widget",
-    description="Performs a hard deletion of the specified widget if it belongs to the authenticated tenant.",
+    description="Performs a SOFT DELETE on the specified widget if it belongs to the authenticated tenant.",
 )
 async def delete_widget(
     widget_id: uuid.UUID,
@@ -209,20 +156,8 @@ async def delete_widget(
         )
         return None
 
-    except ValueError as e:
-        if "not found" in str(e).lower() or "access denied" in str(e).lower():
-            logger.warning(f"Widget deletion not found or access denied: {str(e)}")
-            raise NotFoundError(
-                message="Widget not found or belongs to another tenant",
-                context="widget_deletion",
-                details={"widget_id": str(widget_id)},
-            )
-        logger.error(f"Widget deletion validation error: {str(e)}")
-        raise ValidationError(
-            message=str(e),
-            context="widget_deletion",
-            details={"error_type": "validation_error"},
-        )
+    except (NotFoundError, DatabaseError, InternalServerError) as e:
+        raise
     except Exception as e:
         logger.error(f"Widget deletion failed: {str(e)}")
         raise InternalServerError(
@@ -252,24 +187,14 @@ async def update_widget(
             title=widget_data.title,
             is_active=widget_data.is_active,
             domain_whitelist=widget_data.domain_whitelist,
-            settings=widget_data.settings.model_dump() if widget_data.settings else None,
+            settings=(
+                widget_data.settings.model_dump() if widget_data.settings else None
+            ),
         )
         return WidgetCreateResponse(**response_data)
 
-    except ValueError as e:
-        if "not found" in str(e).lower() or "access denied" in str(e).lower():
-            logger.warning(f"Widget update not found or access denied: {str(e)}")
-            raise NotFoundError(
-                message="Widget not found or belongs to another tenant",
-                context="widget_update",
-                details={"widget_id": str(widget_id)},
-            )
-        logger.error(f"Widget update validation error: {str(e)}")
-        raise ValidationError(
-            message=str(e),
-            context="widget_update",
-            details={"error_type": "validation_error"},
-        )
+    except (NotFoundError, ConflictError, DatabaseError, InternalServerError) as e:
+        raise
     except Exception as e:
         logger.error(f"Widget update failed: {str(e)}")
         raise InternalServerError(

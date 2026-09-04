@@ -146,3 +146,29 @@ class ResourceAccessDeniedError(APIBusinessException):
             context=context,
             details=details,
         )
+
+
+class ConflictError(APIBusinessException):
+    """Raised when a resource conflict occurs (e.g., duplicate entry, constraint violation)."""
+
+    def __init__(self, message: str = "Resource conflict", context: str = "api", details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            error_code="CONFLICT",
+            message=message,
+            context=context,
+            details=details,
+        )
+
+
+class DatabaseError(APIBusinessException):
+    """Raised when a database operation fails."""
+
+    def __init__(self, message: str = "Database operation failed", context: str = "api", details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            error_code="DATABASE_ERROR",
+            message=message,
+            context=context,
+            details=details,
+        )

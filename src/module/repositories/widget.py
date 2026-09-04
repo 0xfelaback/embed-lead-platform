@@ -1,10 +1,11 @@
 import uuid
 from typing import Any, Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, func
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import select, update, func
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from src.main import logger
-from src.module.schemas import Widget, WidgetType
+from src.module.schemas.widget import Widget, WidgetType
+from src.Shared.exceptions import NotFoundError, ConflictError, DatabaseError
 
 
 class WidgetRepository:
@@ -24,7 +25,7 @@ class WidgetRepository:
         widget_type: WidgetType,
         title: str,
         settings: dict[str, Any],
-    ) -> Optional[Widget]:
+    ) -> Widget:
         """
         Create a new widget for a tenant.
 
@@ -51,12 +52,24 @@ class WidgetRepository:
             )
             return new_widget
 
+        except IntegrityError as e:
+            logger.error(f"Widget creation constraint violation: {str(e)}")
+            await self.session.rollback()
+            raise ConflictError(
+                message="Widget creation failed due to a constraint violation",
+                context="widget_creation",
+                details={"tenant_id": str(tenant_id), "error": str(e)},
+            )
         except SQLAlchemyError as e:
             logger.error(f"Failed to create widget: {str(e)}")
             await self.session.rollback()
-            return None
+            raise DatabaseError(
+                message="Failed to create widget in database",
+                context="widget_creation",
+                details={"tenant_id": str(tenant_id), "error": str(e)},
+            )
 
-    async def get_by_id(self, widget_id: uuid.UUID) -> Optional[Widget]:
+    async def get_by_id(self, widget_id: uuid.UUID) -> Widget:
         try:
             result = await self.session.execute(
                 select(Widget).where(Widget.id == widget_id)
@@ -65,14 +78,24 @@ class WidgetRepository:
 
             if widget:
                 logger.info(f"Retrieved widget by id: {widget_id}")
+                return widget
             else:
                 logger.debug(f"Widget not found with id: {widget_id}")
+                raise NotFoundError(
+                    message="Widget not found",
+                    context="widget_retrieval",
+                    details={"widget_id": str(widget_id)},
+                )
 
-            return widget
-
+        except NotFoundError:
+            raise
         except SQLAlchemyError as e:
             logger.error(f"Failed to retrieve widget by id: {str(e)}")
-            return None
+            raise DatabaseError(
+                message="Failed to retrieve widget from database",
+                context="widget_retrieval",
+                details={"widget_id": str(widget_id), "error": str(e)},
+            )
 
     async def get_by_tenant_id(
         self,
@@ -123,7 +146,11 @@ class WidgetRepository:
 
         except SQLAlchemyError as e:
             logger.error(f"Failed to retrieve widgets by tenant id: {str(e)}")
-            return [], 0
+            raise DatabaseError(
+                message="Failed to retrieve widgets from database",
+                context="widget_list",
+                details={"tenant_id": str(tenant_id), "error": str(e)},
+            )
 
     async def update(
         self,
@@ -132,11 +159,9 @@ class WidgetRepository:
         settings: Optional[dict[str, Any]] = None,
         is_active: Optional[bool] = None,
         domain_whitelist: Optional[list[str]] = None,
-    ) -> Optional[Widget]:
+    ) -> Widget:
         try:
-            widget = await self.get_by_id(widget_id)
-            if not widget:
-                return None
+            await self.get_by_id(widget_id)  # raises its errors internally.
 
             update_values = {}
             if title is not None:
@@ -158,27 +183,44 @@ class WidgetRepository:
             logger.info(f"Updated widget: {widget_id}")
             return updated_widget
 
+        except NotFoundError:
+            raise
+        except IntegrityError as e:
+            logger.error(f"Widget update constraint violation: {str(e)}")
+            await self.session.rollback()
+            raise ConflictError(
+                message="Widget update failed due to a constraint violation",
+                context="widget_update",
+                details={"widget_id": str(widget_id), "error": str(e)},
+            )
         except SQLAlchemyError as e:
             logger.error(f"Failed to update widget: {str(e)}")
             await self.session.rollback()
-            return None
+            raise DatabaseError(
+                message="Failed to update widget in database",
+                context="widget_update",
+                details={"widget_id": str(widget_id), "error": str(e)},
+            )
 
     async def delete(self, widget_id: uuid.UUID) -> bool:
         try:
             widget = await self.get_by_id(widget_id)
-            if not widget:
-                return False
-
-            await self.session.execute(delete(Widget).where(Widget.id == widget_id))
+            widget.mark_widget_deleted()
             await self.session.commit()
 
-            logger.info(f"Deleted widget: {widget_id}")
+            logger.info(f"Soft deleted widget: {widget_id}")
             return True
 
+        except NotFoundError:
+            raise
         except SQLAlchemyError as e:
             logger.error(f"Failed to delete widget: {str(e)}")
             await self.session.rollback()
-            return False
+            raise DatabaseError(
+                message="Failed to delete widget from database",
+                context="widget_deletion",
+                details={"widget_id": str(widget_id), "error": str(e)},
+            )
 
     async def exists_by_id(self, widget_id: uuid.UUID) -> bool:
         try:

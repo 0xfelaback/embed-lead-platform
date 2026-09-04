@@ -1,10 +1,24 @@
 from uuid import UUID
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 
 from fastapi import Depends
+from src.module.dtos.widget import (
+    PaginationInfo,
+    SingleWidgetListItemResponse,
+    WidgetCreateResponse,
+    WidgetListItem,
+    WidgetListResponse,
+)
+from src.Shared.exceptions import (
+    NotFoundError,
+    ResourceAccessDeniedError,
+    InternalServerError,
+    ConflictError,
+    DatabaseError,
+)
 from src.main import logger
-from src.module.service import WidgetService, get_WidgetService
-from src.module.schemas import WidgetType
+from src.module.services.widget import WidgetService, get_WidgetService
+from src.module.schemas.widget import WidgetType
 
 
 class WidgetOrchestrator:
@@ -24,7 +38,7 @@ class WidgetOrchestrator:
         widget_type: WidgetType,
         title: str,
         settings: dict[str, Any],
-    ) -> dict[str, Any]:
+    ) -> WidgetCreateResponse:
         try:
             logger.info(f"Starting widget creation workflow for tenant: {tenant_id}")
             widget = await self.widget_service.create_widget(
@@ -33,7 +47,6 @@ class WidgetOrchestrator:
                 title=title,
                 settings=settings,
             )
-
             embed_snippet = self.widget_service.generate_embed_snippet(widget.id)
 
             response_data: dict[str, Any] = {
@@ -49,47 +62,75 @@ class WidgetOrchestrator:
                 "embed_snippet": embed_snippet,
                 "is_active": widget.is_active,
                 "created_at": widget.created_at,
-                "updated_at": widget.updated_at,
             }
 
             logger.info(f"Widget creation workflow completed successfully: {widget.id}")
-            return response_data
+            return WidgetCreateResponse.model_validate(response_data)
 
+        except (ConflictError, DatabaseError):
+            raise
         except Exception as e:
             logger.error(f"Widget creation workflow failed: {str(e)}")
-            raise ValueError(f"Widget creation failed: {str(e)}")
+            raise InternalServerError(
+                message="Widget creation failed",
+                context="widget_creation",
+                details={"error": str(e)},
+            )
 
-    async def get_widget_workflow(self, widget_id: UUID) -> Dict[str, Any]:
+    async def get_widget_workflow(
+        self, widget_id: UUID, tenant_id: UUID
+    ) -> SingleWidgetListItemResponse:
         try:
+            belongs_to_tenant = (
+                await self.widget_service.widget_repository.belongs_to_tenant(
+                    widget_id=widget_id,
+                    tenant_id=tenant_id,
+                )
+            )
+            if not belongs_to_tenant:
+                logger.warning(
+                    f"Unauthorized widget access attempt: widget_id={widget_id}, tenant_id={tenant_id}"
+                )
+                raise ResourceAccessDeniedError(
+                    message="You do not have permission to access this widget",
+                    context="widget_retrieval",
+                    details={"widget_id": str(widget_id)},
+                )
+
             logger.info(f"Starting widget retrieval workflow: {widget_id}")
             widget = await self.widget_service.get_widget_by_id(widget_id)
 
-            if not widget:
-                raise ValueError(f"Widget not found: {widget_id}")
-
             embed_snippet = self.widget_service.generate_embed_snippet(widget.id)
-            response_data: dict[str, Any] = {
-                "id": str(widget.id),
-                "tenant_id": str(widget.tenant_id),
-                "type": (
+
+            response_data = SingleWidgetListItemResponse(
+                id=str(widget.id),
+                title=widget.title,
+                is_active=widget.is_active,
+                created_at=widget.created_at,
+                type=(
                     widget.type.value
                     if hasattr(widget.type, "value")
                     else str(widget.type)
                 ),
-                "title": widget.title,
-                "settings": widget.settings,
-                "embed_snippet": embed_snippet,
-                "is_active": widget.is_active,
-                "created_at": widget.created_at,
-                "updated_at": widget.updated_at,
-            }
+                tenant_id=tenant_id,
+                settings=widget.settings,
+                updated_at=widget.updated_at,
+                embed_snippet=embed_snippet,
+                domain_whitelist=widget.domain_whitelist,
+            )
 
             logger.info(f"Widget retrieval workflow completed: {widget_id}")
             return response_data
 
+        except (NotFoundError, ResourceAccessDeniedError, DatabaseError):
+            raise
         except Exception as e:
             logger.error(f"Widget retrieval workflow failed: {str(e)}")
-            raise ValueError(f"Widget retrieval failed: {str(e)}")
+            raise InternalServerError(
+                message="Widget retrieval failed",
+                context="widget_retrieval",
+                details={"error": str(e)},
+            )
 
     async def list_widgets_workflow(
         self,
@@ -97,7 +138,7 @@ class WidgetOrchestrator:
         page: int = 1,
         limit: int = 20,
         status_filter: Optional[str] = None,
-    ) -> dict[str, Any]:
+    ) -> WidgetListResponse:
         """
         Execute the widget list workflow with pagination.
 
@@ -122,39 +163,49 @@ class WidgetOrchestrator:
 
             total_pages = (total_count + limit - 1) // limit if total_count > 0 else 0
 
-            widget_items: list[dict[str, Any]] = [
-                {
-                    "id": str(widget.id),
-                    "type": (
-                        widget.type.value
-                        if hasattr(widget.type, "value")
-                        else str(widget.type)
-                    ),
-                    "title": widget.title,
-                    "is_active": widget.is_active,
-                    "created_at": widget.created_at,
-                }
+            widget_items: list[WidgetListItem] = [
+                WidgetListItem.model_validate(
+                    {
+                        "id": str(widget.id),
+                        "type": (
+                            widget.type.value
+                            if hasattr(widget.type, "value")
+                            else str(widget.type)
+                        ),
+                        "title": widget.title,
+                        "is_active": widget.is_active,
+                        "created_at": widget.created_at,
+                    }
+                )
                 for widget in widgets
             ]
-
-            response_data: dict[str, Any] = {
-                "data": widget_items,
+            pagination_data = {
                 "pagination": {
                     "current_page": page,
                     "per_page": limit,
                     "total_records": total_count,
                     "total_pages": total_pages,
-                },
+                }
             }
+            response_data = WidgetListResponse(
+                pagination=PaginationInfo.model_validate(pagination_data),
+                data=widget_items,
+            )
 
             logger.info(
                 f"Widget list workflow completed: {len(widgets)} widgets, page {page}"
             )
             return response_data
 
+        except DatabaseError:
+            raise
         except Exception as e:
             logger.error(f"Widget list workflow failed: {str(e)}")
-            raise ValueError(f"Widget list failed: {str(e)}")
+            raise InternalServerError(
+                message="Widget list failed",
+                context="widget_list",
+                details={"error": str(e)},
+            )
 
     async def delete_widget_workflow(self, widget_id: UUID, tenant_id: UUID) -> bool:
         try:
@@ -172,22 +223,26 @@ class WidgetOrchestrator:
                 logger.warning(
                     f"Widget deletion unauthorized: widget_id={widget_id}, tenant_id={tenant_id}"
                 )
-                raise ValueError("Widget not found or access denied")
+                raise NotFoundError(
+                    message="Widget not found or belongs to another tenant",
+                    context="widget_deletion",
+                    details={"widget_id": str(widget_id)},
+                )
 
-            deleted = await self.widget_service.widget_repository.delete(widget_id)
-            if not deleted:
-                logger.error(f"Widget deletion failed: widget_id={widget_id}")
-                raise ValueError("Failed to delete widget")
+            await self.widget_service.widget_repository.delete(widget_id)
 
             logger.info(f"Widget deletion workflow completed: widget_id={widget_id}")
             return True
 
-        except ValueError as e:
-            logger.error(f"Widget deletion workflow validation error: {str(e)}")
+        except (NotFoundError, DatabaseError):
             raise
         except Exception as e:
             logger.error(f"Widget deletion workflow failed: {str(e)}")
-            raise ValueError(f"Widget deletion failed: {str(e)}")
+            raise InternalServerError(
+                message="Widget deletion failed",
+                context="widget_deletion",
+                details={"error": str(e)},
+            )
 
     async def update_widget_workflow(
         self,
@@ -214,7 +269,11 @@ class WidgetOrchestrator:
                 logger.warning(
                     f"Widget update unauthorized: widget_id={widget_id}, tenant_id={tenant_id}"
                 )
-                raise ValueError("Widget not found or access denied")
+                raise NotFoundError(
+                    message="Widget not found or belongs to another tenant",
+                    context="widget_update",
+                    details={"widget_id": str(widget_id)},
+                )
 
             settings_dict = settings if settings else None
             updated_widget = await self.widget_service.widget_repository.update(
@@ -224,10 +283,6 @@ class WidgetOrchestrator:
                 is_active=is_active,
                 domain_whitelist=domain_whitelist,
             )
-
-            if not updated_widget:
-                logger.error(f"Widget update failed: widget_id={widget_id}")
-                raise ValueError("Failed to update widget")
 
             embed_snippet = self.widget_service.generate_embed_snippet(widget_id)
             response_data: dict[str, Any] = {
@@ -249,12 +304,15 @@ class WidgetOrchestrator:
             logger.info(f"Widget update workflow completed: widget_id={widget_id}")
             return response_data
 
-        except ValueError as e:
-            logger.error(f"Widget update workflow validation error: {str(e)}")
+        except (NotFoundError, ConflictError, DatabaseError):
             raise
         except Exception as e:
             logger.error(f"Widget update workflow failed: {str(e)}")
-            raise ValueError(f"Widget update failed: {str(e)}")
+            raise InternalServerError(
+                message="Widget update failed",
+                context="widget_update",
+                details={"error": str(e)},
+            )
 
 
 def get_WidgetOrchestrator(
