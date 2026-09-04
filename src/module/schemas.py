@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Enum as SQLEnum,
+    ARRAY,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -95,6 +96,7 @@ class Widget(Base):
         SQLEnum(WidgetType, name="widget_type", create_constraint=True), nullable=False
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    domain_whitelist: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
     settings: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

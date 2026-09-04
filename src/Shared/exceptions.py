@@ -94,3 +94,55 @@ class InternalServerError(APIBusinessException):
             context=context,
             details=details,
         )
+
+
+class ValidationError(APIBusinessException):
+    """Raised when request validation fails."""
+
+    def __init__(self, message: str = "Validation failed", context: str = "api", details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            error_code="VALIDATION_ERROR",
+            message=message,
+            context=context,
+            details=details,
+        )
+
+
+class UnauthorizedError(APIBusinessException):
+    """Raised when authentication fails."""
+
+    def __init__(self, message: str = "Unauthorized", context: str = "api", details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code="UNAUTHORIZED",
+            message=message,
+            context=context,
+            details=details,
+        )
+
+
+class NotFoundError(APIBusinessException):
+    """Raised when a requested resource is not found."""
+
+    def __init__(self, message: str = "Resource not found", context: str = "api", details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            status_code=status.HTTP_404_NOT_FOUND,
+            error_code="NOT_FOUND",
+            message=message,
+            context=context,
+            details=details,
+        )
+
+
+class ResourceAccessDeniedError(APIBusinessException):
+    """Raised when a tenant attempts to access a resource that doesn't belong to them."""
+
+    def __init__(self, message: str = "Access denied to this resource", context: str = "api", details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            error_code="RESOURCE_ACCESS_DENIED",
+            message=message,
+            context=context,
+            details=details,
+        )

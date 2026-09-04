@@ -8,9 +8,10 @@ from src.Shared.Infrastructure.db_context.context import settings
 from jwt import PyJWT
 from src.Shared.Infrastructure.db_context.config import get_db
 from src.main import logger
-from src.module.schemas import Tenant
+from src.module.schemas import Tenant, Widget, WidgetType
 from src.module.repositories.TenantRepository import TenantRepository
-from typing import Any
+from src.module.repositories.WidgetRepository import WidgetRepository
+from typing import Any, List, Optional
 from jwt.exceptions import PyJWTError
 from src.Shared.exceptions import (
     EmailAlreadyExistsError,
@@ -18,6 +19,15 @@ from src.Shared.exceptions import (
     TokenGenerationError,
     InvalidCredentialsError,
 )
+from jwt import decode  # type: ignore
+
+from typing import Annotated
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jwt.exceptions import InvalidTokenError
+from pwdlib import PasswordHash
+
+security = HTTPBearer()
 
 
 class AuthService:
@@ -46,10 +56,34 @@ class AuthService:
         self.password_hasher = PasswordHash((Argon2Hasher(),))
         self.jwt = PyJWT()
 
+    async def get_current_tenant(
+        self, credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]
+    ) -> Tenant:
+        credentials_exception = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        try:
+            token = credentials.credentials
+            payload: dict[str, Any] = decode(
+                token, settings.JWT_SECRET, algorithms=["HS256"]
+            )
+            email: str | None = payload.get("email")
+            if email is None:
+                raise credentials_exception
+        except InvalidTokenError:
+            raise credentials_exception
+
+        tenant = await self.tenant_repository.get_by_email(email)
+        if tenant is None:
+            raise credentials_exception
+        return tenant
+
     def hash_password(self, password: str) -> str:
         try:
             hashed = self.password_hasher.hash(password)
-            logger.debug("Password hashed successfully")
+            logger.info("Password hashed successfully")
             return hashed
         except Exception as e:
             logger.error(f"Password hashing failed: {str(e)}")
@@ -64,7 +98,7 @@ class AuthService:
         """
         try:
             result = self.password_hasher.verify(password, hashed_password)
-            logger.debug("Password verification completed")
+            logger.info("Password verification completed")
             return result
         except Exception as e:
             logger.error(f"Password verification failed: {str(e)}")
@@ -97,7 +131,7 @@ class AuthService:
                     payload, self.jwt_secret, algorithm="HS256"
                 )
             )
-            logger.debug(f"Access token generated for tenant {tenant_id}")
+            logger.info(f"Access token generated for tenant {tenant_id}")
             return encoded_jwt
         except PyJWTError as e:
             logger.error(f"JWT encoding failed: {str(e)}")
@@ -161,6 +195,68 @@ class AuthService:
         Note: For server-side logout, implement the yet to be implemented token blacklisting.
         """
         logger.info("Tenant logout requested")
+
+
+class WidgetService:
+    """
+    Service handling widget-related business logic.
+
+    This service encapsulates widget creation, validation, and embed snippet generation
+    with proper error handling and business rules.
+    """
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+        self.widget_repository = WidgetRepository(session)
+
+    def generate_embed_snippet(self, widget_id: UUID) -> str:
+        api_base_url = settings.BASE_URL
+        return f'<script src="{api_base_url}/widget.js?id={widget_id}"></script>'
+
+    async def create_widget(
+        self,
+        tenant_id: UUID,
+        widget_type: WidgetType,
+        title: str,
+        settings: dict[str, Any],
+    ) -> Widget:
+        widget = await self.widget_repository.create(
+            tenant_id=tenant_id,
+            widget_type=widget_type,
+            title=title,
+            settings=settings,
+        )
+
+        if not widget:
+            logger.error(f"Widget creation failed for tenant: {tenant_id}")
+            raise ValueError("Failed to create widget")
+
+        logger.info(f"Widget created successfully: {widget.id}")
+        return widget
+
+    async def get_widget_by_id(self, widget_id: UUID) -> Optional[Widget]:
+        return await self.widget_repository.get_by_id(widget_id)
+
+    async def get_widgets_by_tenant(self, tenant_id: UUID) -> tuple[List[Widget], int]:
+        return await self.widget_repository.get_by_tenant_id(tenant_id)
+
+    async def get_widgets_paginated(
+        self,
+        tenant_id: UUID,
+        page: int = 1,
+        limit: int = 20,
+        status_filter: Optional[str] = None,
+    ) -> tuple[list[Widget], int]:
+        limit = min(limit, 20)
+        return await self.widget_repository.get_by_tenant_id(
+            tenant_id, page, limit, status_filter
+        )
+
+
+def get_WidgetService(
+    session: AsyncSession = Depends(get_db),
+) -> WidgetService:
+    return WidgetService(session=session)
 
 
 def get_AuthService(

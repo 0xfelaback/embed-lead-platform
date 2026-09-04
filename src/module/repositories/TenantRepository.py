@@ -57,7 +57,7 @@ class TenantRepository:
             tenant = result.scalar_one_or_none()
 
             if tenant:
-                logger.debug(f"Retrieved tenant by id: {tenant_id}")
+                logger.info(f"Retrieved tenant by id: {tenant_id}")
             else:
                 logger.debug(f"Tenant not found with id: {tenant_id}")
 
@@ -75,7 +75,7 @@ class TenantRepository:
             tenant = result.scalar_one_or_none()
 
             if tenant:
-                logger.debug(f"Retrieved tenant by email: {email}")
+                logger.info(f"Retrieved tenant by email: {email}")
             else:
                 logger.debug(f"Tenant not found with email: {email}")
 

@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = Field(default=...)
     POSTGRES_DB: str = Field(default=...)
     JWT_SECRET: str = Field(default=...)
+    BASE_URL: str = Field(default=...)
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
