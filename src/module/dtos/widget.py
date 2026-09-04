@@ -24,7 +24,13 @@ class InputType(Enum):
 
 
 class WidgetFieldDefinition(BaseModel):
-    """Schema for defining a single field in widget settings."""
+    """
+    Schema for defining a single field in widget settings.
+
+    For 'select' field type: options array is required and defines the dropdown choices.
+    For 'checkbox' field type: options array is required and defines the available checkbox options.
+    For other field types (text, email, number, textarea): options array is ignored.
+    """
 
     name: str = Field(..., description="Field name/identifier")
     type: InputType = Field(..., description="Field type")
@@ -32,7 +38,8 @@ class WidgetFieldDefinition(BaseModel):
     required: bool = Field(default=False, description="Whether the field is required")
     placeholder: Optional[str] = Field(None, description="Placeholder text")
     options: Optional[List[str]] = Field(
-        None, description="Options for select/checkbox fields"
+        None,
+        description="Required for 'select' and 'checkbox' types. Array of string options (e.g., ['Option A', 'Option B']). Ignored for other types.",
     )
 
 
@@ -62,12 +69,12 @@ class WidgetCreateRequest(BaseModel):
     with proper validation for types and settings.
     """
 
-    type: WidgetType = Field(..., description="Widget type")
+    type: WidgetType = Field(..., description="Widget type (signup, cta, or popover)")
     title: str = Field(..., min_length=1, max_length=255, description="Widget title")
     settings: WidgetSettings = Field(..., description="Widget configuration settings")
-    domain_whitelist: Optional[List[str]] = Field(
-        ...,
-        description="Valid hostnames/origins (e.g., ['example.com']). Empty = allow all.",
+    domain_whitelist: List[str] = Field(
+        default_factory=list,
+        description="Valid hostnames/origins (e.g., ['example.com']). Empty list = no domains allowed.",
     )
 
     @field_validator("title")
@@ -80,7 +87,7 @@ class WidgetCreateRequest(BaseModel):
 
     @field_validator("domain_whitelist")
     @classmethod
-    def validate_domains(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+    def validate_domains(cls, v: List[str]) -> List[str]:
         """Validate that provided domains match a valid hostname or regex pattern."""
         if not v:
             return v
@@ -110,7 +117,7 @@ class WidgetCreateRequest(BaseModel):
         (e.g., If type is 'signup', ensure fields are configured properly).
         """
         # Convert settings to dict for checking
-        settings_dict: Dict[str, Any] = self.settings.model_dump()
+        settings_dict: Dict[str, Any] = self.settings.model_dump(mode="json")
 
         if self.type == WidgetType.SIGNUP:
             if not settings_dict.get("fields"):
@@ -155,7 +162,7 @@ class WidgetUpdateRequest(BaseModel):
     is_active: Optional[bool] = Field(None, description="Whether widget is active")
     domain_whitelist: Optional[List[str]] = Field(
         None,
-        description="Valid hostnames/origins (e.g., ['example.com']). Replaces existing array.",
+        description="Valid hostnames/origins (e.g., ['example.com']). Empty list = no domains allowed. Replaces existing array.",
     )
     settings: Optional[WidgetSettings] = Field(
         None, description="Widget configuration settings (full replacement)"
@@ -198,15 +205,17 @@ class WidgetUpdateRequest(BaseModel):
 
 class WidgetCreateResponse(BaseModel):
 
-    id: str = Field(..., description="Widget ID")
-    tenant_id: str = Field(..., description="Tenant ID")
+    id: uuid.UUID = Field(..., description="Widget ID")
+    tenant_id: uuid.UUID = Field(..., description="Tenant ID")
     type: str = Field(..., description="Widget type")
     title: str = Field(..., description="Widget title")
     settings: Dict[str, Any] = Field(..., description="Widget settings")
     embed_snippet: str = Field(..., description="Embed script snippet")
     is_active: bool = Field(..., description="Whether widget is active")
     created_at: datetime = Field(..., description="Creation timestamp")
-    updated_at: Optional[datetime] = Field(..., description="Last update timestamp")
+    updated_at: Optional[datetime] = Field(
+        default=None, description="Last update timestamp"
+    )
 
     class Config:
         from_attributes = True
@@ -215,7 +224,7 @@ class WidgetCreateResponse(BaseModel):
 class WidgetListItem(BaseModel):
     """Simplified widget representation for list views."""
 
-    id: str = Field(..., description="Widget ID")
+    id: uuid.UUID = Field(..., description="Widget ID")
     type: str = Field(..., description="Widget type")
     title: str = Field(..., description="Widget title")
     is_active: bool = Field(..., description="Whether widget is active")
@@ -252,4 +261,6 @@ class SingleWidgetListItemResponse(WidgetListItem):
     embed_snippet: str = Field(
         ..., description="HTML script tag used to embed the widget on external sites"
     )
-    updated_at: datetime = Field(..., description="Updated At timestamp")
+    updated_at: Optional[datetime] = Field(
+        default=None, description="Updated At timestamp"
+    )

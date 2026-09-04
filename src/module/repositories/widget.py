@@ -1,10 +1,12 @@
 import uuid
 from typing import Any, Optional, List
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from src.main import logger
-from src.module.schemas.widget import Widget, WidgetType
+from src.module.schemas import Widget
+from src.module.schemas.widget import WidgetType
 from src.Shared.exceptions import NotFoundError, ConflictError, DatabaseError
 
 
@@ -42,6 +44,8 @@ class WidgetRepository:
                 type=widget_type,
                 title=title,
                 settings=settings,
+                is_deleted=False,
+                deleted_at=None,
             )
             self.session.add(new_widget)
             await self.session.commit()
@@ -72,7 +76,7 @@ class WidgetRepository:
     async def get_by_id(self, widget_id: uuid.UUID) -> Widget:
         try:
             result = await self.session.execute(
-                select(Widget).where(Widget.id == widget_id)
+                select(Widget).where(Widget.id == widget_id, Widget.is_deleted == False)
             )
             widget = result.scalar_one_or_none()
 
@@ -112,7 +116,7 @@ class WidgetRepository:
         """
         try:
             # Build base query
-            query = select(Widget).where(Widget.tenant_id == tenant_id)
+            query = select(Widget).where(Widget.tenant_id == tenant_id, Widget.is_deleted == False)
 
             if status_filter == "active":
                 query = query.where(Widget.is_active == True)
@@ -122,7 +126,7 @@ class WidgetRepository:
             count_query = (
                 select(func.count())
                 .select_from(Widget)
-                .where(Widget.tenant_id == tenant_id)
+                .where(Widget.tenant_id == tenant_id, Widget.is_deleted == False)
             )
             if status_filter == "active":
                 count_query = count_query.where(Widget.is_active == True)
@@ -174,6 +178,7 @@ class WidgetRepository:
                 update_values["domain_whitelist"] = domain_whitelist
 
             if update_values:
+                update_values["updated_at"] = datetime.now(timezone.utc)
                 await self.session.execute(
                     update(Widget).where(Widget.id == widget_id).values(**update_values)
                 )
@@ -241,7 +246,7 @@ class WidgetRepository:
         try:
             result = await self.session.execute(
                 select(Widget.id).where(
-                    Widget.id == widget_id, Widget.tenant_id == tenant_id
+                    Widget.id == widget_id, Widget.tenant_id == tenant_id, Widget.is_deleted == False
                 )
             )
             return result.scalar_one_or_none() is not None

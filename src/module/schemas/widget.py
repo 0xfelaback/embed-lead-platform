@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 import uuid
 from datetime import datetime, timezone
 from enum import Enum as PyEnum
@@ -14,7 +14,6 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.Shared.Infrastructure.db_context.schema import base as Base
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.module.schemas.submission import Submission
@@ -73,13 +72,13 @@ class Widget(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=None,
         nullable=True,
     )
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     deleted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=None,
         nullable=True,
     )
 

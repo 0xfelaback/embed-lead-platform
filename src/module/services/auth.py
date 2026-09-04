@@ -8,7 +8,7 @@ from src.Shared.Infrastructure.db_context.config import get_db
 from src.Shared.Infrastructure.db_context.context import settings
 from jwt import PyJWT
 from src.main import logger
-from src.module.schemas.tenant import Tenant
+from src.module.schemas import Tenant
 from src.module.repositories.tenant import TenantRepository
 from typing import Any
 from jwt.exceptions import PyJWTError

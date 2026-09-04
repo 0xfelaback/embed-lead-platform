@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from sqlalchemy.exc import SQLAlchemyError
 from src.main import logger
-from src.module.schemas.tenant import Tenant
+from src.module.schemas import Tenant
 
 
 class TenantRepository:

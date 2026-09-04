@@ -4,7 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.Shared.Infrastructure.db_context.context import settings
 from src.Shared.Infrastructure.db_context.config import get_db
 from src.main import logger
-from src.module.schemas.widget import Widget, WidgetType
+from src.module.schemas import Widget
+from src.module.schemas.widget import WidgetType
 from src.module.repositories.widget import WidgetRepository
 from typing import Any, List, Optional
 from jwt import decode  # type: ignore

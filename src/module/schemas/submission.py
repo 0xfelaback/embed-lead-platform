@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import (
@@ -11,7 +11,6 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.Shared.Infrastructure.db_context.schema import base as Base
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.module.schemas.tenant import Tenant

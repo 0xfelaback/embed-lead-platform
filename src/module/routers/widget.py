@@ -12,7 +12,7 @@ from src.module.services.auth import (
     AuthService,
     get_AuthService,
 )
-from src.module.schemas.tenant import Tenant
+from src.module.schemas import Tenant
 from src.module.orchestrators.widget import WidgetOrchestrator, get_WidgetOrchestrator
 from src.Shared.exceptions import (
     InternalServerError,
@@ -53,7 +53,7 @@ async def create_widget(
             tenant_id=tenant.id,
             widget_type=widget_data.type,
             title=widget_data.title,
-            settings=widget_data.settings.model_dump(),
+            settings=widget_data.settings.model_dump(mode="json"),
         )
         return response_data
 
@@ -156,7 +156,7 @@ async def delete_widget(
         )
         return None
 
-    except (NotFoundError, DatabaseError, InternalServerError) as e:
+    except (NotFoundError, ResourceAccessDeniedError, DatabaseError, InternalServerError) as e:
         raise
     except Exception as e:
         logger.error(f"Widget deletion failed: {str(e)}")
@@ -188,12 +188,14 @@ async def update_widget(
             is_active=widget_data.is_active,
             domain_whitelist=widget_data.domain_whitelist,
             settings=(
-                widget_data.settings.model_dump() if widget_data.settings else None
+                widget_data.settings.model_dump(mode="json")
+                if widget_data.settings
+                else None
             ),
         )
         return WidgetCreateResponse(**response_data)
 
-    except (NotFoundError, ConflictError, DatabaseError, InternalServerError) as e:
+    except (NotFoundError, ResourceAccessDeniedError, ConflictError, DatabaseError, InternalServerError) as e:
         raise
     except Exception as e:
         logger.error(f"Widget update failed: {str(e)}")

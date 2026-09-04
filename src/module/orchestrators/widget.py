@@ -103,7 +103,7 @@ class WidgetOrchestrator:
             embed_snippet = self.widget_service.generate_embed_snippet(widget.id)
 
             response_data = SingleWidgetListItemResponse(
-                id=str(widget.id),
+                id=widget.id,
                 title=widget.title,
                 is_active=widget.is_active,
                 created_at=widget.created_at,
@@ -116,7 +116,9 @@ class WidgetOrchestrator:
                 settings=widget.settings,
                 updated_at=widget.updated_at,
                 embed_snippet=embed_snippet,
-                domain_whitelist=widget.domain_whitelist,
+                domain_whitelist=(
+                    widget.domain_whitelist if widget.domain_whitelist else []
+                ),
             )
 
             logger.info(f"Widget retrieval workflow completed: {widget_id}")
@@ -180,12 +182,10 @@ class WidgetOrchestrator:
                 for widget in widgets
             ]
             pagination_data = {
-                "pagination": {
-                    "current_page": page,
-                    "per_page": limit,
-                    "total_records": total_count,
-                    "total_pages": total_pages,
-                }
+                "current_page": page,
+                "per_page": limit,
+                "total_records": total_count,
+                "total_pages": total_pages,
             }
             response_data = WidgetListResponse(
                 pagination=PaginationInfo.model_validate(pagination_data),
@@ -223,9 +223,9 @@ class WidgetOrchestrator:
                 logger.warning(
                     f"Widget deletion unauthorized: widget_id={widget_id}, tenant_id={tenant_id}"
                 )
-                raise NotFoundError(
-                    message="Widget not found or belongs to another tenant",
-                    context="widget_deletion",
+                raise ResourceAccessDeniedError(
+                    message="You do not have permission to access this widget",
+                    context="widget_retrieval",
                     details={"widget_id": str(widget_id)},
                 )
 
@@ -234,7 +234,7 @@ class WidgetOrchestrator:
             logger.info(f"Widget deletion workflow completed: widget_id={widget_id}")
             return True
 
-        except (NotFoundError, DatabaseError):
+        except (NotFoundError, ResourceAccessDeniedError, DatabaseError):
             raise
         except Exception as e:
             logger.error(f"Widget deletion workflow failed: {str(e)}")
@@ -269,9 +269,9 @@ class WidgetOrchestrator:
                 logger.warning(
                     f"Widget update unauthorized: widget_id={widget_id}, tenant_id={tenant_id}"
                 )
-                raise NotFoundError(
-                    message="Widget not found or belongs to another tenant",
-                    context="widget_update",
+                raise ResourceAccessDeniedError(
+                    message="You do not have permission to access this widget",
+                    context="widget_retrieval",
                     details={"widget_id": str(widget_id)},
                 )
 
@@ -304,7 +304,7 @@ class WidgetOrchestrator:
             logger.info(f"Widget update workflow completed: widget_id={widget_id}")
             return response_data
 
-        except (NotFoundError, ConflictError, DatabaseError):
+        except (NotFoundError, ResourceAccessDeniedError, ConflictError, DatabaseError):
             raise
         except Exception as e:
             logger.error(f"Widget update workflow failed: {str(e)}")
