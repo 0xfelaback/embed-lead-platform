@@ -13,6 +13,7 @@ from src.Shared.repository.SharedRepository import SharedRepository
 from src.Shared.Infrastructure.db_context.context import get_engine
 from src.module.routers.auth import router as auth_router
 from src.module.routers.widget import router as widget_router
+from src.module.routers.submission import router as submission_router
 from src.Shared.exceptions import APIBusinessException
 
 current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -62,6 +63,7 @@ app = FastAPI(lifespan=lifespan)
 
 app.include_router(auth_router)
 app.include_router(widget_router)
+app.include_router(submission_router)
 
 
 @app.get("/health")

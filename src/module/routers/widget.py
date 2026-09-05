@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status, Query
+from fastapi import APIRouter, Depends, status, Query, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import uuid
 from src.module.dtos.widget import (
@@ -156,7 +156,12 @@ async def delete_widget(
         )
         return None
 
-    except (NotFoundError, ResourceAccessDeniedError, DatabaseError, InternalServerError) as e:
+    except (
+        NotFoundError,
+        ResourceAccessDeniedError,
+        DatabaseError,
+        InternalServerError,
+    ) as e:
         raise
     except Exception as e:
         logger.error(f"Widget deletion failed: {str(e)}")
@@ -195,12 +200,58 @@ async def update_widget(
         )
         return WidgetCreateResponse(**response_data)
 
-    except (NotFoundError, ResourceAccessDeniedError, ConflictError, DatabaseError, InternalServerError) as e:
+    except (
+        NotFoundError,
+        ResourceAccessDeniedError,
+        ConflictError,
+        DatabaseError,
+        InternalServerError,
+    ) as e:
         raise
     except Exception as e:
         logger.error(f"Widget update failed: {str(e)}")
         raise InternalServerError(
             message="An unexpected error occurred while updating the widget",
             context="widget_update",
+            details={"error": str(e)},
+        )
+
+
+@router.get(
+    "/v1/widget.js",
+    summary="Get widget loader script",
+    description="Returns the minified client loader script. The script reads its own src parameter (id=...), fetches the corresponding widget configuration JSON from the backend, renders the DOM elements inside the target page, and wires up submit events to the public submission route.",
+)
+async def get_widget_loader_script(
+    v: str = Query(
+        None, description="Version identifier for asset cache busting (e.g., ?v=1.0.4)"
+    ),
+    widget_orchestrator: WidgetOrchestrator = Depends(get_WidgetOrchestrator),
+):
+    """
+    Public endpoint for serving the widget JavaScript loader script.
+
+    The script is heavily cached for performance (1 month) with the option
+    to bust cache using the 'v' query parameter.
+    """
+    try:
+        logger.info(f"Widget loader script requested (version: {v or 'latest'})")
+        loader_script = await widget_orchestrator.get_widget_loader_script_workflow()
+
+        return Response(
+            content=loader_script,
+            media_type="application/javascript; charset=utf-8",
+            headers={
+                "Cache-Control": "public, max-age=2592000, immutable",
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+    except (InternalServerError, ConflictError) as e:
+        raise
+    except Exception as e:
+        logger.error(f"Widget loader script delivery failed: {str(e)}")
+        raise InternalServerError(
+            message="An unexpected error occurred while delivering the widget loader script",
+            context="widget_loader_script",
             details={"error": str(e)},
         )

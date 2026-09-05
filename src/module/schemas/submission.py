@@ -1,4 +1,5 @@
 from __future__ import annotations
+from enum import Enum
 from typing import Any, Dict, TYPE_CHECKING
 import uuid
 from datetime import datetime, timezone
@@ -7,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Enum as SQLEnum,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -15,6 +17,11 @@ from src.Shared.Infrastructure.db_context.schema import base as Base
 if TYPE_CHECKING:
     from src.module.schemas.tenant import Tenant
     from src.module.schemas.widget import Widget
+
+
+class SubmissionStatus(Enum):
+    SUCCESS = "success"
+    FAILED = "failed"
 
 
 class Submission(Base):
@@ -69,6 +76,11 @@ class Submission(Base):
         default=lambda: datetime.now(timezone.utc),
         index=True,
         nullable=False,
+    )
+    status: Mapped[SubmissionStatus] = mapped_column(
+        SQLEnum(SubmissionStatus, name="submission_status", create_constraint=True),
+        nullable=False,
+        default=SubmissionStatus.FAILED,
     )
 
     widget: Mapped["Widget"] = relationship("Widget", back_populates="submissions")

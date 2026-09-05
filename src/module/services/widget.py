@@ -10,6 +10,8 @@ from src.module.repositories.widget import WidgetRepository
 from typing import Any, List, Optional
 from jwt import decode  # type: ignore
 from fastapi import Depends
+from aiofiles import open
+import os
 
 
 class WidgetService:
@@ -27,6 +29,16 @@ class WidgetService:
     def generate_embed_snippet(self, widget_id: UUID) -> str:
         api_base_url = settings.BASE_URL
         return f'<script src="{api_base_url}/widget.js?id={widget_id}"></script>'
+
+    async def get_widget_loader_script(self) -> str:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        script_path = os.path.join(current_dir, "widget_loader_script.js")
+
+        js_script_string = None
+        async with open(script_path, "r", encoding="utf-8") as file:
+            js_script_string = await file.read()
+
+        return js_script_string
 
     async def create_widget(
         self,

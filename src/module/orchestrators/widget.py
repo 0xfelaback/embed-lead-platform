@@ -314,6 +314,20 @@ class WidgetOrchestrator:
                 details={"error": str(e)},
             )
 
+    async def get_widget_loader_script_workflow(self) -> str:
+        try:
+            logger.info("Starting widget loader script delivery workflow")
+            loader_script = await self.widget_service.get_widget_loader_script()
+            logger.info("Widget loader script delivery workflow completed")
+            return loader_script
+        except Exception as e:
+            logger.error(f"Widget loader script delivery workflow failed: {str(e)}")
+            raise ConflictError(
+                message="Failed to generate widget loader script",
+                context="widget_loader_script",
+                details={"error": str(e)},
+            )
+
 
 def get_WidgetOrchestrator(
     widget_service: WidgetService = Depends(get_WidgetService),
