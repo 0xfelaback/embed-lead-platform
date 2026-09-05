@@ -29,11 +29,14 @@ class SubmissionOrchestrator:
         client_ip: str,
         user_agent: str,
         geo_data: Optional[dict[str, Any]] = None,
+        origin: str = "*",
     ) -> SubmissionResponse:
         try:
             logger.info(
                 f"Starting submission creation workflow for widget: {widget_id}"
             )
+
+            logger.info(f"Calling service layer for widget: {widget_id} with payload size: {len(str(payload))}")
 
             submission = await self.submission_service.create_submission(
                 widget_id=widget_id,
@@ -41,7 +44,10 @@ class SubmissionOrchestrator:
                 client_ip=client_ip,
                 user_agent=user_agent,
                 geo_data=geo_data or {},
+                origin=origin,
             )
+
+            logger.info(f"Service layer returned submission: {submission.id}, status: {submission.status}")
 
             response_data = SubmissionResponse.model_validate(
                 {
@@ -52,6 +58,7 @@ class SubmissionOrchestrator:
                     "client_ip": str(submission.client_ip),
                     "geo_data": submission.geo_data,
                     "user_agent": submission.user_agent,
+                    "origin": submission.origin,
                     "status": submission.status,
                     "created_at": submission.created_at,
                 }
@@ -76,9 +83,13 @@ class SubmissionOrchestrator:
         try:
             logger.info(f"Starting submission retrieval workflow: {submission_id}")
 
+            logger.info(f"Calling service layer to retrieve submission: {submission_id}")
+
             submission = await self.submission_service.get_submission_by_id(
                 submission_id
             )
+
+            logger.info(f"Service layer returned submission: {submission_id}")
 
             response_data = SubmissionResponse.model_validate(
                 {
@@ -89,6 +100,7 @@ class SubmissionOrchestrator:
                     "client_ip": submission.client_ip,
                     "geo_data": submission.geo_data,
                     "user_agent": submission.user_agent,
+                    "origin": submission.origin,
                     "created_at": submission.created_at,
                 }
             )
@@ -136,6 +148,7 @@ class SubmissionOrchestrator:
                             "client_ip": submission.client_ip,
                             "geo_data": submission.geo_data,
                             "user_agent": submission.user_agent,
+                            "origin": submission.origin,
                             "created_at": submission.created_at,
                         }
                     )

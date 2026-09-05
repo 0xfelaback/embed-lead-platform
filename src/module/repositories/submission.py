@@ -30,8 +30,11 @@ class SubmissionRepository:
         user_agent: str,
         geo_data: dict[str, Any],
         status: SubmissionStatus,
+        origin: str,
     ) -> Submission:
         try:
+            logger.info(f"Repository: Creating submission for widget: {widget_id}, tenant: {tenant_id}")
+
             new_submission = Submission(
                 id=uuid.uuid4(),
                 widget_id=widget_id,
@@ -41,19 +44,26 @@ class SubmissionRepository:
                 user_agent=user_agent,
                 geo_data=geo_data,
                 status=status,
+                origin=origin,
                 created_at=datetime.now(timezone.utc),
             )
+            
+            logger.info(f"Repository: Adding submission to session: {new_submission.id}")
             self.session.add(new_submission)
+            
+            logger.info(f"Repository: Committing submission to database: {new_submission.id}")
             await self.session.commit()
+            
+            logger.info(f"Repository: Refreshing submission: {new_submission.id}")
             await self.session.refresh(new_submission)
 
             logger.info(
-                f"Created new submission with id: {new_submission.id} for widget: {widget_id}"
+                f"Repository: Created new submission with id: {new_submission.id} for widget: {widget_id}"
             )
             return new_submission
 
         except SQLAlchemyError as e:
-            logger.error(f"Failed to create submission: {str(e)}")
+            logger.error(f"Repository: Failed to create submission: {str(e)}")
             await self.session.rollback()
             raise DatabaseError(
                 message="Failed to create submission in database",
@@ -67,16 +77,18 @@ class SubmissionRepository:
 
     async def get_by_id(self, submission_id: uuid.UUID) -> Submission:
         try:
+            logger.info(f"Repository: Retrieving submission by id: {submission_id}")
+            
             result = await self.session.execute(
                 select(Submission).where(Submission.id == submission_id)
             )
             submission = result.scalar_one_or_none()
 
             if submission:
-                logger.info(f"Retrieved submission by id: {submission_id}")
+                logger.info(f"Repository: Retrieved submission by id: {submission_id}")
                 return submission
             else:
-                logger.debug(f"Submission not found with id: {submission_id}")
+                logger.debug(f"Repository: Submission not found with id: {submission_id}")
                 raise NotFoundError(
                     message="Submission not found",
                     context="submission_retrieval",
@@ -86,7 +98,7 @@ class SubmissionRepository:
         except NotFoundError:
             raise
         except SQLAlchemyError as e:
-            logger.error(f"Failed to retrieve submission by id: {str(e)}")
+            logger.error(f"Repository: Failed to retrieve submission by id: {str(e)}")
             raise DatabaseError(
                 message="Failed to retrieve submission from database",
                 context="submission_retrieval",
@@ -97,9 +109,13 @@ class SubmissionRepository:
         self, widget_id: uuid.UUID, page: int = 1, limit: int = 20
     ) -> tuple[list[Submission], int]:
         try:
+            logger.info(f"Repository: Retrieving submissions for widget: {widget_id} (page {page})")
+            
             count_query = select(Submission).where(Submission.widget_id == widget_id)
             count_result = await self.session.execute(count_query)
             total_count = len(count_result.scalars().all())
+
+            logger.info(f"Repository: Total submissions for widget {widget_id}: {total_count}")
 
             offset = (page - 1) * limit
             query = (
@@ -113,12 +129,12 @@ class SubmissionRepository:
             submissions = result.scalars().all()
 
             logger.info(
-                f"Retrieved {len(submissions)} submissions for widget: {widget_id} (page {page})"
+                f"Repository: Retrieved {len(submissions)} submissions for widget: {widget_id} (page {page})"
             )
             return list(submissions), total_count
 
         except SQLAlchemyError as e:
-            logger.error(f"Failed to retrieve submissions by widget id: {str(e)}")
+            logger.error(f"Repository: Failed to retrieve submissions by widget id: {str(e)}")
             raise DatabaseError(
                 message="Failed to retrieve submissions from database",
                 context="submission_retrieval",
@@ -129,9 +145,13 @@ class SubmissionRepository:
         self, tenant_id: uuid.UUID, page: int = 1, limit: int = 20
     ) -> tuple[list[Submission], int]:
         try:
+            logger.info(f"Repository: Retrieving submissions for tenant: {tenant_id} (page {page})")
+            
             count_query = select(Submission).where(Submission.tenant_id == tenant_id)
             count_result = await self.session.execute(count_query)
             total_count = len(count_result.scalars().all())
+
+            logger.info(f"Repository: Total submissions for tenant {tenant_id}: {total_count}")
 
             offset = (page - 1) * limit
             query = (
@@ -145,12 +165,12 @@ class SubmissionRepository:
             submissions = result.scalars().all()
 
             logger.info(
-                f"Retrieved {len(submissions)} submissions for tenant: {tenant_id} (page {page})"
+                f"Repository: Retrieved {len(submissions)} submissions for tenant: {tenant_id} (page {page})"
             )
             return list(submissions), total_count
 
         except SQLAlchemyError as e:
-            logger.error(f"Failed to retrieve submissions by tenant id: {str(e)}")
+            logger.error(f"Repository: Failed to retrieve submissions by tenant id: {str(e)}")
             raise DatabaseError(
                 message="Failed to retrieve submissions from database",
                 context="submission_retrieval",

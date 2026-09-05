@@ -1,4 +1,6 @@
+from typing import Any
 from fastapi import APIRouter, Depends, status, HTTPException, Request, Response
+from src.module.services.submission import SubmissionService, get_SubmissionService
 from src.module.dtos.submission import SubmissionResponse, SubmissionRequest
 from src.module.orchestrators.submission import (
     SubmissionOrchestrator,
@@ -9,6 +11,7 @@ from src.Shared.exceptions import (
     NotFoundError,
     DatabaseError,
 )
+from src.Shared.Infrastructure.redis import redis_client
 from src.main import logger
 from sys import getsizeof
 
@@ -28,6 +31,10 @@ async def submission_cors_preflight(request: Request):
     )
     request_headers = request.headers.get(  # type: ignore
         "Access-Control-Request-Headers", ""
+    )
+
+    logger.info(
+        f"CORS preflight request from origin: {origin}, method: {request_method}"
     )
 
     return Response(
@@ -57,6 +64,7 @@ async def submission_ingestion(
     submission_orchestrator: SubmissionOrchestrator = Depends(
         get_SubmissionOrchestrator
     ),
+    submission_service: SubmissionService = Depends(get_SubmissionService),
 ):
     """
     Public endpoint for creating submissions from embedded widgets.
@@ -65,22 +73,50 @@ async def submission_ingestion(
     It extracts client information (IP, user agent) and creates a submission record.
     """
     try:
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip: str = request.client.host if request.client else "unknown"
+        redis_key = f"widget-{payload.widget_id}: client-{client_ip}"
+        current_requests = await redis_client.incr(redis_key)
+        if current_requests == 1:
+            await redis_client.expire(redis_key, 60)
+        if current_requests > 5:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Rate limit exceeded for this resource. Try again in a minute.",
+            )
+
+        logger.info(f"Submission ingestion started for widget: {payload.widget_id}")
+        geo_data: dict[str, Any] | None = submission_service.get_ip_location(client_ip)
         user_agent = request.headers.get("user-agent", "unknown")
-        # origin = request.headers.get("Origin", "*")
+        origin = request.headers.get("Origin", "*")
+
+        logger.info(
+            f"Client info - IP: {client_ip}, Origin: {origin}, User-Agent: {user_agent[:50]}..."
+        )
 
         if getsizeof(payload) > 100 * 1024:
+            logger.warning(
+                f"Payload too large for widget {payload.widget_id}: {getsizeof(payload)} bytes"
+            )
             raise HTTPException(
                 status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 detail="The request payload is larger than the limit of 100KB",
             )
+
+        logger.info(
+            f"Payload validation passed, starting workflow for widget: {payload.widget_id}"
+        )
 
         response_data = await submission_orchestrator.create_submission_workflow(
             widget_id=payload.widget_id,
             payload=payload.form_data,
             client_ip=client_ip,
             user_agent=user_agent,
-            geo_data={},
+            geo_data=geo_data if geo_data is not None else {},
+            origin=origin,
+        )
+
+        logger.info(
+            f"Submission ingestion completed successfully for widget: {payload.widget_id}, submission: {response_data.id}"
         )
 
         response.headers["Access-Control-Allow-Origin"] = "*"

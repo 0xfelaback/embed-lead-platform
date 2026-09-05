@@ -29,7 +29,7 @@ class Submission(Base):
     Submission entity representing form submissions from widgets.
 
     Submissions are linked to both a widget and a tenant, containing the payload
-    data along with metadata like client IP, geolocation, and user agent.
+    data along with metadata like client IP, geolocation, user agent, and origin.
 
     Attributes:
         id: Unique identifier for the submission (primary key, indexed).
@@ -39,6 +39,7 @@ class Submission(Base):
         client_ip: IP address of the client submitting the form.
         geo_data: JSONB field containing geolocation data (nullable).
         user_agent: User agent string from the client's browser.
+        origin: Origin header from the client's request (CORS origin).
         created_at: Timestamp when the submission was created (indexed).
     """
 
@@ -71,6 +72,7 @@ class Submission(Base):
     client_ip: Mapped[str] = mapped_column(INET, nullable=False)
     geo_data: Mapped[Dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     user_agent: Mapped[str] = mapped_column(Text, nullable=False)
+    origin: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

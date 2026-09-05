@@ -244,7 +244,7 @@ async def get_widget_loader_script(
             content=loader_script,
             media_type="application/javascript; charset=utf-8",
             headers={
-                "Cache-Control": "public, max-age=2592000, immutable",
+                "Cache-Control": "public, max-age=2592000, stale-while-revalidate",
                 "Access-Control-Allow-Origin": "*",
             },
         )
@@ -278,20 +278,21 @@ async def get_public_widget_config(
     """
     try:
         logger.info(f"Public widget config requested: {widget_id}")
-        
         widget = await widget_service.get_public_widget_config(widget_id)
-        
-        response_data = PublicWidgetConfigResponse.model_validate({
-            "id": widget.id,
-            "title": widget.title,
-            "settings": widget.settings,
-        })
+
+        response_data = PublicWidgetConfigResponse.model_validate(
+            {
+                "id": widget.id,
+                "title": widget.title,
+                "settings": widget.settings,
+            }
+        )
 
         return Response(
             content=response_data.model_dump_json(),
             media_type="application/json",
             headers={
-                "Cache-Control": "public, max-age=60",
+                "Cache-Control": "public, no-cache, max-age=600",  # TODO: how is the http 304 accounted for ?
                 "Access-Control-Allow-Origin": "*",
             },
         )

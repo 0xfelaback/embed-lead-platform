@@ -39,6 +39,7 @@ class SubmissionResponse(BaseModel):
         description="Geolocation data for the client IP"
     )
     user_agent: str = Field(..., description="User agent string from the client")
+    origin: str = Field(..., description="Origin header from the client's request")
     status: SubmissionStatus = Field(..., description="Submission status")
     created_at: datetime = Field(..., description="Timestamp when the submission was created")
 
