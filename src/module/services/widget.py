@@ -1,6 +1,7 @@
 from uuid import UUID
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.Shared.exceptions import ConflictError, NotFoundError
 from src.Shared.Infrastructure.db_context.context import settings
 from src.Shared.Infrastructure.db_context.config import get_db
 from src.main import logger
@@ -31,14 +32,23 @@ class WidgetService:
         return f'<script src="{api_base_url}/widget.js?id={widget_id}"></script>'
 
     async def get_widget_loader_script(self) -> str:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        script_path = os.path.join(current_dir, "widget_loader_script.js")
+        try:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            script_path = os.path.join(current_dir, "widget_loader_script.js")
 
-        js_script_string = None
-        async with open(script_path, "r", encoding="utf-8") as file:
-            js_script_string = await file.read()
+            js_script_string = None
+            async with open(script_path, "r", encoding="utf-8") as file:
+                js_script_string = await file.read()
+            modified_js = js_script_string.replace("__BASE_URL__", settings.BASE_URL)
 
-        return js_script_string
+            return modified_js
+        except Exception as e:
+            logger.error(f"Widget loader script delivery workflow failed: {str(e)}")
+            raise ConflictError(
+                message="Failed to generate widget loader script",
+                context="widget_loader_script",
+                details={"error": str(e)},
+            )
 
     async def create_widget(
         self,
@@ -58,7 +68,21 @@ class WidgetService:
         return widget
 
     async def get_widget_by_id(self, widget_id: UUID) -> Widget:
-        return await self.widget_repository.get_by_id(widget_id)
+        widget = await self.widget_repository.get_by_id(widget_id)
+        return widget
+
+    async def get_public_widget_config(self, widget_id: UUID) -> Widget:
+        widget = await self.widget_repository.get_by_id(widget_id)
+
+        if not widget.is_active:
+            logger.warning(f"Public config requested for inactive widget: {widget_id}")
+            raise NotFoundError(
+                message="Widget not found",
+                context="public_widget_config",
+                details={"widget_id": str(widget_id)},
+            )
+
+        return widget
 
     async def get_widgets_by_tenant(self, tenant_id: UUID) -> tuple[List[Widget], int]:
         return await self.widget_repository.get_by_tenant_id(tenant_id)

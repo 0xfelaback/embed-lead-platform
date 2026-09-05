@@ -49,7 +49,7 @@ class SubmissionOrchestrator:
                     "widget_id": submission.widget_id,
                     "tenant_id": submission.tenant_id,
                     "payload": submission.payload,
-                    "client_ip": submission.client_ip,
+                    "client_ip": str(submission.client_ip),
                     "geo_data": submission.geo_data,
                     "user_agent": submission.user_agent,
                     "status": submission.status,

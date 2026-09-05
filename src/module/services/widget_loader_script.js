@@ -7,13 +7,10 @@ const currentScript = document.currentScript.src;
         return console.error("Widget ID missing from script tag.");
     }
 
-    fetch(`${process.env.BASE_URL}/v1/widgets/` + widgetId + `/config`)
-        .then(response => {
-            if (!response.ok) {
-                return response.text().then(errorText => {
-                throw new Error(`Config endpoint returned ${response.status}. Info: ${errorText}`);
-            })}
-            return response.json();
+    fetch("__BASE_URL__/v1/widgets/" + widgetId + "/config")
+        .then(async (response) => {
+            if (!response.ok) {throw new Error("Config endpoint returned " + response.status);}
+            return await response.json();
         })
         .then(config => {
             if (!config.id || !config.settings) {
@@ -99,7 +96,7 @@ const currentScript = document.currentScript.src;
                     _hp_confirm: hpValue
                 };
 
-                fetch(`${process.env.BASE_URL}/v1/submissions`, {
+                fetch("__BASE_URL__/v1/submissions", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json"

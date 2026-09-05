@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, status, Query, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import uuid
+from src.module.services.widget import WidgetService, get_WidgetService
 from src.module.dtos.widget import (
     SingleWidgetListItemResponse,
+    PublicWidgetConfigResponse,
     WidgetCreateRequest,
     WidgetCreateResponse,
     WidgetListResponse,
@@ -223,10 +225,10 @@ async def update_widget(
     description="Returns the minified client loader script. The script reads its own src parameter (id=...), fetches the corresponding widget configuration JSON from the backend, renders the DOM elements inside the target page, and wires up submit events to the public submission route.",
 )
 async def get_widget_loader_script(
-    v: str = Query(
-        None, description="Version identifier for asset cache busting (e.g., ?v=1.0.4)"
-    ),
-    widget_orchestrator: WidgetOrchestrator = Depends(get_WidgetOrchestrator),
+    id: uuid.UUID = Query(
+        None, description="unique identifier for the widget"
+    ),  # TODO: utilise the versioning correctly, the one required for cache-busting.
+    widget_service: WidgetService = Depends(get_WidgetService),
 ):
     """
     Public endpoint for serving the widget JavaScript loader script.
@@ -235,8 +237,8 @@ async def get_widget_loader_script(
     to bust cache using the 'v' query parameter.
     """
     try:
-        logger.info(f"Widget loader script requested (version: {v or 'latest'})")
-        loader_script = await widget_orchestrator.get_widget_loader_script_workflow()
+        logger.info(f"Widget loader script requested (Id: {id})")
+        loader_script = await widget_service.get_widget_loader_script()
 
         return Response(
             content=loader_script,
@@ -253,5 +255,53 @@ async def get_widget_loader_script(
         raise InternalServerError(
             message="An unexpected error occurred while delivering the widget loader script",
             context="widget_loader_script",
+            details={"error": str(e)},
+        )
+
+
+@router.get(
+    "/v1/widgets/{widget_id}/config",
+    response_model=PublicWidgetConfigResponse,
+    summary="Get public widget configuration",
+    description="Returns widget configuration for the loader script. Public endpoint with CORS enabled and caching. Only contains necessary fields for widget rendering (id, title, settings).",
+)
+async def get_public_widget_config(
+    widget_id: uuid.UUID,
+    widget_service: WidgetService = Depends(get_WidgetService),
+):
+    """
+    Public endpoint for widget configuration.
+
+    This endpoint is called by the widget loader script to get the widget
+    configuration needed to render the widget UI. It's public (no auth required)
+    and only returns non-sensitive information.
+    """
+    try:
+        logger.info(f"Public widget config requested: {widget_id}")
+        
+        widget = await widget_service.get_public_widget_config(widget_id)
+        
+        response_data = PublicWidgetConfigResponse.model_validate({
+            "id": widget.id,
+            "title": widget.title,
+            "settings": widget.settings,
+        })
+
+        return Response(
+            content=response_data.model_dump_json(),
+            media_type="application/json",
+            headers={
+                "Cache-Control": "public, max-age=60",
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+
+    except NotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"Public widget config retrieval failed: {str(e)}")
+        raise InternalServerError(
+            message="An unexpected error occurred while retrieving widget configuration",
+            context="public_widget_config",
             details={"error": str(e)},
         )

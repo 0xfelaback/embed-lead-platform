@@ -264,3 +264,13 @@ class SingleWidgetListItemResponse(WidgetListItem):
     updated_at: Optional[datetime] = Field(
         default=None, description="Updated At timestamp"
     )
+
+
+class PublicWidgetConfigResponse(BaseModel):
+
+    id: uuid.UUID = Field(..., description="Widget ID")
+    title: str = Field(..., description="Widget title")
+    settings: WidgetSettings = Field(..., description="Widget configuration settings")
+
+    class Config:
+        from_attributes = True

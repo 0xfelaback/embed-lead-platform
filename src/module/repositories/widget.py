@@ -116,7 +116,9 @@ class WidgetRepository:
         """
         try:
             # Build base query
-            query = select(Widget).where(Widget.tenant_id == tenant_id, Widget.is_deleted == False)
+            query = select(Widget).where(
+                Widget.tenant_id == tenant_id, Widget.is_deleted == False
+            )
 
             if status_filter == "active":
                 query = query.where(Widget.is_active == True)
@@ -246,7 +248,7 @@ class WidgetRepository:
         try:
             result = await self.session.execute(
                 select(Widget.id).where(
-                    Widget.id == widget_id, Widget.tenant_id == tenant_id, Widget.is_deleted == False
+                    Widget.id == widget_id, Widget.tenant_id == tenant_id
                 )
             )
             return result.scalar_one_or_none() is not None
